@@ -1,64 +1,89 @@
-import React, { useState } from "react";
-import Plot from "react-plotly.js";  // Plotly chart component
+import React, { useState, useEffect } from 'react';
+import './App.css';
 
 function App() {
-  const [topics, setTopics] = useState([]);
-  const [error, setError] = useState("");
+    const [file, setFile] = useState(null);
+    const [message, setMessage] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    const [dashboardUrl, setDashboardUrl] = useState("http://127.0.0.1:5000/dashboard/");
+    const [useDefault, setUseDefault] = useState(true);
 
-  // Handle file upload and send data to backend
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    const formData = new FormData();
-    formData.append("file", file);
+    const handleFileChange = (event) => {
+        setFile(event.target.files[0]);
+        setUseDefault(false);
+    };
 
-    try {
-      const response = await fetch("http://127.0.0.1:5000/topics", {
-        method: "POST",
-        body: formData,
-      });
+    const handleUpload = async () => {
+        if (!file) {
+            setMessage("Please select a file to upload.");
+            return;
+        }
+        
+        setIsLoading(true);
+        setMessage("Processing file...");
+        
+        const formData = new FormData();
+        formData.append("file", file);
+        
+        try {
+            const response = await fetch("http://127.0.0.1:5000/process", {
+                method: "POST",
+                body: formData,
+            });
+            
+            const result = await response.json();
+            setMessage(result.message);
+            
+            // Refresh the dashboard iframe to show new data
+            setDashboardUrl("http://127.0.0.1:5000/dashboard/?t=" + new Date().getTime());
+        } catch (error) {
+            setMessage("Error uploading file: " + error.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-      if (response.ok) {
-        const data = await response.json();
-        setTopics(data);  // Store topic data for visualization
-      } else {
-        setError("Failed to fetch data from backend.");
-      }
-    } catch (error) {
-      setError("Error uploading file.");
-      console.error(error);
-    }
-  };
+    const useDefaultData = () => {
+        setUseDefault(true);
+        setMessage("Using default dataset (steam_reviews.csv)");
+        setDashboardUrl("http://127.0.0.1:5000/dashboard/?t=" + new Date().getTime());
+    };
 
-  // Render topics as Plotly bar chart
-  const plotData = topics.map((topic, index) => ({
-    type: "bar",
-    x: topic.words,
-    y: Array(topic.words.length).fill(index + 1),
-    name: topic.topic,
-  }));
-
-  return (
-    <div className="App">
-      <h1>Steam Reviews NLP Dashboard</h1>
-      <input type="file" onChange={handleFileUpload} />
-      {error && <p>{error}</p>}
-
-      {topics.length > 0 && (
-        <div>
-          <h2>Topic Modeling</h2>
-          <Plot
-            data={plotData}
-            layout={{
-              title: "LDA Topic Modeling",
-              barmode: "stack",
-              xaxis: { title: "Words" },
-              yaxis: { title: "Topic" },
-            }}
-          />
+    return (
+        <div className="App">
+            <header className="App-header">
+                <h1>Review Analysis Tool</h1>
+            </header>
+            
+            <div className="control-panel">
+                <h2>Upload Reviews CSV</h2>
+                <p>Upload a CSV file with a 'review_text' column to analyze sentiment and topics</p>
+                
+                <div className="file-upload">
+                    <input type="file" accept=".csv" onChange={handleFileChange} />
+                    <button onClick={handleUpload} disabled={isLoading || !file}>
+                        {isLoading ? "Processing..." : "Upload and Analyze"}
+                    </button>
+                    <button onClick={useDefaultData}>
+                        Use Default Dataset
+                    </button>
+                </div>
+                
+                {message && <div className="message">{message}</div>}
+            </div>
+            
+            <div className="dashboard-container">
+                <h2>Analysis Dashboard</h2>
+                <iframe 
+                    src={dashboardUrl} 
+                    title="Analysis Dashboard" 
+                    width="100%" 
+                    height="800px"
+                    style={{border: "none"}}
+                />
+            </div>
         </div>
-      )}
-    </div>
-  );
+    );
 }
 
 export default App;
