@@ -123,7 +123,7 @@ if __name__ == "__main__":
         
         # Optional: Save the cleaned DataFrame without contradicting reviews
         df.to_csv('cleaned_reviews.csv', index=False)
-        print(f"Cleaned data saved to 'cleaned_reviews_without_contradictions.csv'")
+        print(f"Cleaned data saved to 'cleaned_reviews.csv'")
 
         # TF-IDF Vectorization
         tfidf_vectorizer = TfidfVectorizer()
@@ -152,6 +152,8 @@ if __name__ == "__main__":
         lr.fit(X_train_resampled, y_train_resampled)
 
         y_pred = lr.predict(X_test)
+
+        print(y_pred)
 
         print("Accuracy:", accuracy_score(y_test, y_pred))
         print("\nClassification Report:")

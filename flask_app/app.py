@@ -160,7 +160,7 @@ def predict():
     prediction = lr.predict(tfidf_matrix)
     
     return jsonify({
-        'prediction': prediction[0]
+        'prediction': prediction
     })
 
 # Run the Flask app
