@@ -1,4 +1,9 @@
 /dataset.csv
 /preprocessed_reviews.csv
+/cleaned_reviews.csv
+/contradicting_reviews.csv
+/filtered_dataset.csv
+/pre_processed_reviews.csv
+/processed_reviews.csv
 /saved_model/*
 /results/*
