@@ -171,13 +171,12 @@ def predict_bert():
     # Receive review text for prediction
     data = request.get_json()
     review_text = data.get("review_text")
-
     if not review_text:
         return jsonify({"error": "No review text provided"}), 400
 
     # Preprocess review text
     cleaned_review = preprocess_text(review_text)
-
+    print(cleaned_review)
     #Load BERT tokenizer and model
     tokenizer = BertTokenizer.from_pretrained("./saved_model")
     model = BertForSequenceClassification.from_pretrained("./saved_model")
@@ -199,6 +198,8 @@ def predict_bert():
         return prediction
 
     prediction = predict_sentiment(cleaned_review)
+    
+    print(prediction);
     return jsonify({
         "prediction": prediction
     })
