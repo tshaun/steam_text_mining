@@ -13,6 +13,11 @@ from imblearn.over_sampling import SMOTE
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import joblib
+from transformers import BertTokenizer, BertForSequenceClassification, Trainer, TrainingArguments
+from datasets import Dataset
+import torch
+import accelerate
+import transformers
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -101,10 +106,7 @@ def train_model():
     # TF-IDF Vectorization
     tfidf_vectorizer = TfidfVectorizer()
     tfidf_matrix = tfidf_vectorizer.fit_transform(df['cleaned_review_text'])
-    
-    # Define features and target
-    X = tfidf_matrix
-    y = df['review_score']
+    X, y = tfidf_matrix, df['review_score']
 
     # Train-Test Split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -161,6 +163,45 @@ def predict():
     
     return jsonify({
         'prediction': prediction
+    })
+
+# Unzip the BERT model files into flask_app directory if not done already
+@app.route("/predict_bert", methods=["POST"])
+def predict_bert():
+    # Receive review text for prediction
+    data = request.get_json()
+    review_text = data.get("review_text")
+    if not review_text:
+        return jsonify({"error": "No review text provided"}), 400
+
+    # Preprocess review text
+    cleaned_review = preprocess_text(review_text)
+    print(cleaned_review)
+    #Load BERT tokenizer and model
+    tokenizer = BertTokenizer.from_pretrained("./saved_model")
+    model = BertForSequenceClassification.from_pretrained("./saved_model")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    # Function to predict sentiment
+    def predict_sentiment(text):
+        inputs = tokenizer(text, padding="max_length", truncation=True, max_length=128, return_tensors="pt")
+        
+        # Move inputs to the same device as the model
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+        
+        with torch.no_grad():
+            outputs = model(**inputs)
+        
+        logits = outputs.logits
+        prediction = torch.argmax(logits, dim=-1).item()
+        return prediction
+
+    prediction = predict_sentiment(cleaned_review)
+    
+    print(prediction);
+    return jsonify({
+        "prediction": prediction
     })
 
 # Run the Flask app
