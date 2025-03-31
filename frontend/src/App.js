@@ -8,6 +8,7 @@ function App() {
     const [predictMessage, setPredictMessage] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [dashboardUrl, setDashboardUrl] = useState("http://127.0.0.1:8000/dashboard/");
+    const [activeTab, setActiveTab] = useState("train"); // Default tab is "train"
 
     useEffect(() => {
         // Check if dashboard is available when component mounts
@@ -85,37 +86,73 @@ function App() {
     };
 
     return (
-        <div className="app-container">
-            <div className="form-container">
-                <h1 className="text-center text-3xl font-bold">Game Reviews NLP Dashboard</h1>
+        <div className="page-container">
+            <div className="app-container">
+                <div className="form-container">
+                    <h1>Game Reviews NLP Dashboard</h1>
+                    
+                    {/* Tab Navigation */}
+                    <div className="tab-navigation">
+                        <button 
+                            className={`tab-button ${activeTab === "train" ? "active" : ""}`}
+                            onClick={() => setActiveTab("train")}
+                        >
+                            Train Model
+                        </button>
+                        <button
+                            className={`tab-button ${activeTab === "predict" ? "active" : ""}`}
+                            onClick={() => setActiveTab("predict")}
+                        >
+                            Predict Sentiment
+                        </button>
+                    </div>
 
-                {/* Form to upload CSV file for training */}
-                <div className="form-group">
-                    <h2>Train Model with CSV File</h2>
-                    <form>
-                        <label>Upload your CSV file:</label>
-                        <input type="file" onChange={handleFileChange} accept=".csv" />
-                        <button type="button" onClick={handleUpload}>Train Model</button>
-                    </form>
-                    <div className="result">{trainMessage}</div>
+                    {/* Content for Train tab */}
+                    {activeTab === "train" && (
+                        <div className="form-group">
+                            <h2>Train Model with CSV File</h2>
+                            <form>
+                                <label>Upload your CSV file:</label>
+                                <input type="file" onChange={handleFileChange} accept=".csv" />
+                                <button type="button" onClick={handleUpload} disabled={isLoading}>
+                                    {isLoading ? "Processing..." : "Train Model"}
+                                </button>
+                            </form>
+                            <div className="result">{trainMessage}</div>
+                        </div>
+                    )}
+
+                    {/* Content for Predict tab */}
+                    {activeTab === "predict" && (
+                        <div className="form-group">
+                            <h2>Predict Sentiment for Review Text</h2>
+                            <form>
+                                <label>Enter your review text:</label>
+                                <input type="text" value={reviewText} onChange={handleReviewTextChange} />
+                                <button 
+                                    style={{ backgroundColor: "#34a853" }} 
+                                    type="button" 
+                                    onClick={handlePredict} 
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? "Processing..." : "Predict Sentiment"}
+                                </button>
+                            </form>
+                            <div className="result">{predictMessage}</div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Form to predict sentiment */}
-                <div className="form-group">
-                    <h2>Predict Sentiment for Review Text</h2>
-                    <form>
-                        <label>Enter your review text:</label>
-                        <input type="text" value={reviewText} onChange={handleReviewTextChange} />
-                        <button type="button" onClick={handlePredict}>Predict Sentiment</button>
-                    </form>
-                    <div className="result">{predictMessage}</div>
+                {/* Dashboard iframe */}
+                <div className="dashboard-container">
+                    <iframe src={dashboardUrl} title="Dashboard" />
                 </div>
             </div>
-
-            {/* Dashboard iframe */}
-            <div className="dashboard-container">
-                <iframe src={dashboardUrl} title="Dashboard" />
-            </div>
+            
+            {/* Copyright Footer */}
+            <footer className="footer">
+                <p>&copy; {new Date().getFullYear()} Game Reviews NLP Dashboard. All rights reserved.</p>
+            </footer>
         </div>
     );
 }
