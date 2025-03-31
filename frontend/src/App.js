@@ -3,84 +3,118 @@ import './App.css';
 
 function App() {
     const [file, setFile] = useState(null);
-    const [message, setMessage] = useState("");
+    const [reviewText, setReviewText] = useState("");
+    const [trainMessage, setTrainMessage] = useState("");
+    const [predictMessage, setPredictMessage] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [dashboardUrl, setDashboardUrl] = useState("http://127.0.0.1:5000/dashboard/");
-    const [useDefault, setUseDefault] = useState(true);
+    const [dashboardUrl, setDashboardUrl] = useState("http://127.0.0.1:8000/dashboard/");
+
+    useEffect(() => {
+        // Check if dashboard is available when component mounts
+        fetch("http://127.0.0.1:8000/dashboard/")
+            .then(response => {
+                if (response.ok) {
+                    setTrainMessage("Dashboard loaded successfully with default data.");
+                }
+            })
+            .catch(error => {
+                setTrainMessage("Dashboard not available. Please ensure the server is running.");
+            });
+    }, []);
 
     const handleFileChange = (event) => {
         setFile(event.target.files[0]);
-        setUseDefault(false);
+    };
+
+    const handleReviewTextChange = (event) => {
+        setReviewText(event.target.value);
     };
 
     const handleUpload = async () => {
         if (!file) {
-            setMessage("Please select a file to upload.");
+            setTrainMessage("Please select a file to upload.");
             return;
         }
-        
         setIsLoading(true);
-        setMessage("Processing file...");
-        
+        setTrainMessage("Processing file...");
         const formData = new FormData();
         formData.append("file", file);
-        
         try {
-            const response = await fetch("http://127.0.0.1:5000/process", {
+            const response = await fetch("http://127.0.0.1:8000/process", {
                 method: "POST",
                 body: formData,
             });
-            
             const result = await response.json();
-            setMessage(result.message);
-            
+            setTrainMessage(result.message);
             // Refresh the dashboard iframe to show new data
-            setDashboardUrl("http://127.0.0.1:5000/dashboard/?t=" + new Date().getTime());
+            setDashboardUrl("http://127.0.0.1:8000/dashboard/?t=" + new Date().getTime());
         } catch (error) {
-            setMessage("Error uploading file: " + error.message);
+            setTrainMessage("Error uploading file: " + error.message);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const useDefaultData = () => {
-        setUseDefault(true);
-        setMessage("Using default dataset (steam_reviews.csv)");
-        setDashboardUrl("http://127.0.0.1:5000/dashboard/?t=" + new Date().getTime());
+    const handlePredict = async () => {
+        if (!reviewText) {
+            setPredictMessage("Please enter review text.");
+            return;
+        }
+        setIsLoading(true);
+        setPredictMessage("Predicting sentiment...");
+        try {
+            const response = await fetch("http://127.0.0.1:8000/predict", {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ review_text: reviewText })
+            });
+            const result = await response.json();
+            if (result.error) {
+                setPredictMessage(result.error);
+            } else {
+                let sentiment = result.prediction === 1 ? "Positive" : "Negative";
+                setPredictMessage(`Predicted Sentiment: ${sentiment}`);
+            }
+        } catch (error) {
+            setPredictMessage("Error predicting sentiment: " + error.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
-        <div className="App">
-            <header className="App-header">
-                <h1>Review Analysis Tool</h1>
-            </header>
-            
-            <div className="control-panel">
-                <h2>Upload Reviews CSV</h2>
-                <p>Upload a CSV file with a 'review_text' column to analyze sentiment and topics</p>
-                
-                <div className="file-upload">
-                    <input type="file" accept=".csv" onChange={handleFileChange} />
-                    <button onClick={handleUpload} disabled={isLoading || !file}>
-                        {isLoading ? "Processing..." : "Upload and Analyze"}
-                    </button>
-                    <button onClick={useDefaultData}>
-                        Use Default Dataset
-                    </button>
+        <div className="app-container">
+            <div className="form-container">
+                <h1 className="text-center text-3xl font-bold">Game Reviews NLP Dashboard</h1>
+
+                {/* Form to upload CSV file for training */}
+                <div className="form-group">
+                    <h2>Train Model with CSV File</h2>
+                    <form>
+                        <label>Upload your CSV file:</label>
+                        <input type="file" onChange={handleFileChange} accept=".csv" />
+                        <button type="button" onClick={handleUpload}>Train Model</button>
+                    </form>
+                    <div className="result">{trainMessage}</div>
                 </div>
-                
-                {message && <div className="message">{message}</div>}
+
+                {/* Form to predict sentiment */}
+                <div className="form-group">
+                    <h2>Predict Sentiment for Review Text</h2>
+                    <form>
+                        <label>Enter your review text:</label>
+                        <input type="text" value={reviewText} onChange={handleReviewTextChange} />
+                        <button type="button" onClick={handlePredict}>Predict Sentiment</button>
+                    </form>
+                    <div className="result">{predictMessage}</div>
+                </div>
             </div>
-            
+
+            {/* Dashboard iframe */}
             <div className="dashboard-container">
-                <h2>Analysis Dashboard</h2>
-                <iframe 
-                    src={dashboardUrl} 
-                    title="Analysis Dashboard" 
-                    width="100%" 
-                    height="800px"
-                    style={{border: "none"}}
-                />
+                <iframe src={dashboardUrl} title="Dashboard" />
             </div>
         </div>
     );

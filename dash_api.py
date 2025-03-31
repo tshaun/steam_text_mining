@@ -23,6 +23,7 @@ CORS(app)
 
 # Constants
 DATA_FOLDER = "processed_data"
+# DEFAULT_FILE = "first_100_reviews.csv"
 DEFAULT_FILE = "steam_reviews.csv"
 SENTIMENT_CSV = os.path.join(DATA_FOLDER, "sentiment_results.csv")
 LDA_TOPICS_CSV = os.path.join(DATA_FOLDER, "lda_topics.csv")
@@ -71,10 +72,12 @@ def load_default_data():
         print(f"Error: Default file {DEFAULT_FILE} not found.")
         return False
     
+    print(f"Loading default dataset from {DEFAULT_FILE}...")
     df = pd.read_csv(DEFAULT_FILE)
     df = preprocess_reviews(df)
     perform_sentiment_analysis(df)
     perform_lda(df)
+    print("Default dataset processed successfully.")
     return True
 
 # Process new file upload
@@ -92,7 +95,7 @@ def process_file():
     perform_sentiment_analysis(df)
     perform_lda(df)
     
-    return jsonify({"message": "Processing complete", "success": True})
+    return jsonify({"message": f"Processing complete. Sentiment analysis and topic modeling results saved to {SENTIMENT_CSV} and {LDA_TOPICS_CSV} respectively."})
 
 # Route for serving LDA visualization HTML
 @app.route('/lda_visualization', methods=['GET'])
@@ -160,9 +163,37 @@ def update_topic_table(n):
     df = pd.read_csv(LDA_TOPICS_CSV)
     return df.to_dict('records')
 
+# Endpoint for sentiment prediction using the trained model
+@app.route('/predict', methods=['POST'])
+def predict():
+    # Receive review text for prediction
+    data = request.get_json()
+    review_text = data.get('review_text')
+    
+    if not review_text:
+        return jsonify({'error': 'No review text provided'}), 400
+    
+    # Preprocess review text
+    cleaned_review = preprocess_reviews(pd.DataFrame({'review_text': [review_text]}))['review_text'].iloc[0]
+    
+    # Perform sentiment analysis directly
+    sentiment = TextBlob(str(review_text)).sentiment.polarity
+    prediction = 1 if sentiment > 0 else -1
+    
+    return jsonify({
+        'prediction': prediction
+    })
+
 # Run the API
 if __name__ == "__main__":
+    # Ensure default data is loaded if needed
     if not os.path.exists(SENTIMENT_CSV) or not os.path.exists(LDA_TOPICS_CSV):
-        load_default_data()
+        success = load_default_data()
+        if not success:
+            print("Failed to load default data. Please ensure the default dataset exists.")
+            exit(1)
+    else:
+        print("Using existing processed data files.")
     
-    app.run(debug=True, port=5000)
+    # Run the Flask app on port 8000
+    app.run(debug=True, port=8000)
