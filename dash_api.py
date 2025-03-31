@@ -105,39 +105,117 @@ def get_lda_visualization():
 # Create Dash app
 dash_app = dash.Dash(__name__, server=app, routes_pathname_prefix='/dashboard/')
 
-# Define Dash layout
+######
+
+# Define Dash layout with inline styles
 dash_app.layout = html.Div([
-    html.H1("Review Analysis Dashboard"),
+    html.H1("Review Analysis Dashboard", style={
+        'font-size': '32px',
+        'font-weight': '700',
+        'color': '#4285f4',
+        'text-align': 'center',
+        'margin-bottom': '30px',
+        'padding-bottom': '15px',
+        'border-bottom': '2px solid #e0e0e0',
+        'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+    }),
     
     html.Div([
-        html.H2("Sentiment Analysis"),
+        html.H2("Sentiment Analysis", style={
+            'font-size': '24px',
+            'color': '#4285f4',
+            'font-weight': '600',
+            'margin-top': '30px',
+            'margin-bottom': '15px',
+            'padding-left': '10px',
+            'border-left': '4px solid #34a853',
+            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+        }),
         dcc.Graph(id='sentiment-graph'),
         
-        html.H2("Topic Modeling"),
+        html.H2("Topic Modeling", style={
+            'font-size': '24px',
+            'color': '#4285f4',
+            'font-weight': '600',
+            'margin-top': '30px',
+            'margin-bottom': '15px',
+            'padding-left': '10px',
+            'border-left': '4px solid #34a853',
+            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+        }),
         dash_table.DataTable(
             id='topic-table',
             columns=[
                 {"name": "Topic", "id": "topic"},
                 {"name": "Word", "id": "word"},
-                {"name": "Weight", "id": "weight"}
+                {"name": "Weight", "id": "weight", "format": {"specifier": ".4f"}}
             ],
             page_size=10,
-            style_table={'overflowX': 'auto'}
+            style_table={'overflowX': 'auto'},
+            style_header={
+                'backgroundColor': '#f5f5f7',
+                'color': '#4285f4',
+                'fontWeight': '600',
+                'textAlign': 'left',
+                'padding': '12px 16px',
+                'fontFamily': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+                'fontSize': '14px',
+                'borderBottom': '2px solid #ddd'
+            },
+            style_cell={
+                'padding': '10px 16px',
+                'fontFamily': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+                'fontSize': '14px',
+                'color': '#4285f4'
+            },
+            style_data_conditional=[{
+                'if': {'row_index': 'odd'},
+                'backgroundColor': '#f8f9fa'
+            }]
         ),
         
-        html.Div([
-            html.H3("LDA Visualization"),
-            html.Iframe(id='lda-iframe', src="/lda_visualization", style={"width": "100%", "height": "800px"})
-        ])
-    ]),
+        html.H2("LDA Visualization", style={
+            'font-size': '24px',
+            'color': '#4285f4',
+            'font-weight': '600',
+            'margin-top': '30px',
+            'margin-bottom': '15px',
+            'padding-left': '10px',
+            'border-left': '4px solid #34a853',
+            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+        }),
+        html.Iframe(id='lda-iframe', src="/lda_visualization", style={
+            'border': 'none',
+            'borderRadius': '8px',
+            'boxShadow': '0 1px 5px rgba(0,0,0,0.08)',
+            'width': '100%',
+            'height': '800px',
+            'marginTop': '15px'
+        })
+    ], style={
+        'maxWidth': '1200px',
+        'margin': '0 auto',
+        'backgroundColor': 'white',
+        'boxShadow': '0 2px 10px rgba(0, 0, 0, 0.1)',
+        'borderRadius': '8px',
+        'padding': '25px'
+    }),
     
     dcc.Interval(
         id='interval-component',
         interval=5*1000,  # in milliseconds, refresh every 5 seconds
         n_intervals=0
     )
-])
+], style={
+    'fontFamily': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    'lineHeight': '1.5',
+    'color': '#333',
+    'backgroundColor': '#f4f4f9',
+    'margin': '0',
+    'padding': '20px'
+})
 
+######
 # Callback to update sentiment graph
 @dash_app.callback(
     Output('sentiment-graph', 'figure'),
