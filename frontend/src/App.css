@@ -297,6 +297,26 @@ button:disabled {
   animation: fadeIn 0.3s ease-out;
 }
 
+.app-selection {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    margin-top: 20px;
+    margin-bottom:20px;
+}
+
+.app-selection label {
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+.app-selection select {
+    width: 200px;
+    padding: 5px;
+    font-size: 16px;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -306,4 +326,5 @@ button:disabled {
     opacity: 1;
     transform: translateY(0);
   }
+
 }

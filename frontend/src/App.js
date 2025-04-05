@@ -6,22 +6,26 @@ function App() {
     const [reviewText, setReviewText] = useState("");
     const [trainMessage, setTrainMessage] = useState("");
     const [predictMessage, setPredictMessage] = useState("");
+    const [topicMessage, setTopicMessage] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [dashboardUrl, setDashboardUrl] = useState("http://127.0.0.1:8000/dashboard/");
-    const [activeTab, setActiveTab] = useState("train"); // Default tab is "train"
+    const [dashboardUrl, setDashboardUrl] = useState("http://127.0.0.1:8051/dashboard/");
+    const [activeTab, setActiveTab] = useState("train");
+    const [selectedApp, setSelectedApp] = useState("app1");
 
     useEffect(() => {
-        // Check if dashboard is available when component mounts
-        fetch("http://127.0.0.1:8000/dashboard/")
+        // Fetch the dashboard URL based on selectedApp
+        const baseUrl = selectedApp === "app1" ? "http://127.0.0.1:8051" : "http://127.0.0.1:8052";
+        fetch(`${baseUrl}/dashboard/`)
             .then(response => {
                 if (response.ok) {
                     setTrainMessage("Dashboard loaded successfully with default data.");
+                    setDashboardUrl(`${baseUrl}/dashboard/?t=${new Date().getTime()}`);
                 }
             })
             .catch(error => {
                 setTrainMessage("Dashboard not available. Please ensure the server is running.");
             });
-    }, []);
+    }, [selectedApp]);
 
     const handleFileChange = (event) => {
         setFile(event.target.files[0]);
@@ -40,15 +44,15 @@ function App() {
         setTrainMessage("Processing file...");
         const formData = new FormData();
         formData.append("file", file);
+        const baseUrl = selectedApp === "app1" ? "http://127.0.0.1:8051" : "http://127.0.0.1:8052";
         try {
-            const response = await fetch("http://127.0.0.1:8000/process", {
+            const response = await fetch(`${baseUrl}/upload`, {
                 method: "POST",
                 body: formData,
             });
             const result = await response.json();
             setTrainMessage(result.message);
-            // Refresh the dashboard iframe to show new data
-            setDashboardUrl("http://127.0.0.1:8000/dashboard/?t=" + new Date().getTime());
+            setDashboardUrl(`${baseUrl}/dashboard/?t=${new Date().getTime()}`);
         } catch (error) {
             setTrainMessage("Error uploading file: " + error.message);
         } finally {
@@ -56,30 +60,58 @@ function App() {
         }
     };
 
-    const handlePredict = async () => {
+    const handlePredictSentiment = async () => {
         if (!reviewText) {
             setPredictMessage("Please enter review text.");
             return;
         }
         setIsLoading(true);
         setPredictMessage("Predicting sentiment...");
+        const baseUrl = selectedApp === "app1" ? "http://127.0.0.1:8051" : "http://127.0.0.1:8052";
         try {
-            const response = await fetch("http://127.0.0.1:8000/predict", {
+            const response = await fetch(`${baseUrl}/predict`, {
                 method: "POST",
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ review_text: reviewText })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ review_text: reviewText }),
             });
             const result = await response.json();
             if (result.error) {
                 setPredictMessage(result.error);
             } else {
-                let sentiment = result.prediction === 1 ? "Positive" : "Negative";
+                let sentiment = result.sentiment;
                 setPredictMessage(`Predicted Sentiment: ${sentiment}`);
             }
         } catch (error) {
             setPredictMessage("Error predicting sentiment: " + error.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handlePredictTopic = async () => {
+        if (!reviewText) {
+            setTopicMessage("Please enter review text.");
+            return;
+        }
+        setIsLoading(true);
+        setTopicMessage("Predicting topic...");
+        const baseUrl = selectedApp === "app1" ? "http://127.0.0.1:8051" : "http://127.0.0.1:8052";
+        try {
+            const response = await fetch(`${baseUrl}/predict`, {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ review_text: reviewText }),
+            });
+            const result = await response.json();
+            if (result.error) {
+                setTopicMessage(result.error);
+            } else {
+                let topicVector = result.topic;
+                let topicInfo = `Predicted Topic Vector: ${JSON.stringify(topicVector)}`;
+                setTopicMessage(topicInfo);
+            }
+        } catch (error) {
+            setTopicMessage("Error predicting topic: " + error.message);
         } finally {
             setIsLoading(false);
         }
@@ -90,10 +122,9 @@ function App() {
             <div className="app-container">
                 <div className="form-container">
                     <h1>Game Reviews NLP Dashboard</h1>
-                    
-                    {/* Tab Navigation */}
+
                     <div className="tab-navigation">
-                        <button 
+                        <button
                             className={`tab-button ${activeTab === "train" ? "active" : ""}`}
                             onClick={() => setActiveTab("train")}
                         >
@@ -103,53 +134,67 @@ function App() {
                             className={`tab-button ${activeTab === "predict" ? "active" : ""}`}
                             onClick={() => setActiveTab("predict")}
                         >
-                            Predict Sentiment
+                            Predict Sentiment & Topic
                         </button>
                     </div>
 
-                    {/* Content for Train tab */}
+                    {/* App selection dropdown */}
+                    <div className="app-selection">
+                        <label>Select Backend App: </label>
+                        <select value={selectedApp} onChange={(e) => setSelectedApp(e.target.value)}>
+                            <option value="app1">App 1 (Port 8051)</option>
+                            <option value="app2">App 2 (Port 8052)</option>
+                        </select>
+                    </div>
+
                     {activeTab === "train" && (
                         <div className="form-group">
-                            <h2>Train Model with CSV File</h2>
+                            <h2>Upload CSV File</h2>
                             <form>
                                 <label>Upload your CSV file:</label>
                                 <input type="file" onChange={handleFileChange} accept=".csv" />
                                 <button type="button" onClick={handleUpload} disabled={isLoading}>
-                                    {isLoading ? "Processing..." : "Train Model"}
+                                    {isLoading ? "Processing..." : "Upload File"}
                                 </button>
                             </form>
                             <div className="result">{trainMessage}</div>
                         </div>
                     )}
 
-                    {/* Content for Predict tab */}
                     {activeTab === "predict" && (
                         <div className="form-group">
-                            <h2>Predict Sentiment for Review Text</h2>
+                            <h2>Predict Sentiment & Topic for Review Text</h2>
                             <form>
                                 <label>Enter your review text:</label>
                                 <input type="text" value={reviewText} onChange={handleReviewTextChange} />
-                                <button 
-                                    style={{ backgroundColor: "#34a853" }} 
-                                    type="button" 
-                                    onClick={handlePredict} 
+                                <button
+                                    style={{ backgroundColor: "#34a853" }}
+                                    type="button"
+                                    onClick={handlePredictSentiment}
                                     disabled={isLoading}
                                 >
                                     {isLoading ? "Processing..." : "Predict Sentiment"}
                                 </button>
+                                <button
+                                    style={{ backgroundColor: "#4285f4", marginTop: "10px" }}
+                                    type="button"
+                                    onClick={handlePredictTopic}
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? "Processing..." : "Predict Topic"}
+                                </button>
                             </form>
                             <div className="result">{predictMessage}</div>
+                            <div className="result">{topicMessage}</div>
                         </div>
                     )}
                 </div>
 
-                {/* Dashboard iframe */}
                 <div className="dashboard-container">
                     <iframe src={dashboardUrl} title="Dashboard" />
                 </div>
             </div>
-            
-            {/* Copyright Footer */}
+
             <footer className="footer">
                 <p>&copy; {new Date().getFullYear()} Game Reviews NLP Dashboard. All rights reserved.</p>
             </footer>
