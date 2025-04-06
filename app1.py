@@ -32,8 +32,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 bert_model.to(device)
 
 # Load or initialize LSA vectorizer & model
-lsa_vectorizer = joblib.load(os.path.join("lsa_vectorizer.pkl"))
-lsa_model = joblib.load(os.path.join("lsa_model.pkl"))
+lsa_vectorizer = joblib.load(os.path.join("topic modelling", "lsa_vectorizer.pkl"))
+lsa_model = joblib.load(os.path.join("topic modelling", "lsa_model.pkl"))
 
 # Preprocessing function for text cleaning
 def preprocess_text(text):
