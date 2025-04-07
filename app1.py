@@ -5,6 +5,7 @@ import torch
 from transformers import BertTokenizer, BertForSequenceClassification
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from dash import Dash, dcc, html, Input, Output
 import plotly.express as px
 import os
@@ -21,7 +22,7 @@ lemmatizer = WordNetLemmatizer()
 # Flask app
 server = Flask(__name__)
 
-# Directory for processed data (original dataset)
+# Directory for processed data
 PROCESSED_DATA_DIR = "processed_data1"
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 
@@ -31,11 +32,11 @@ bert_model = BertForSequenceClassification.from_pretrained("./saved_model")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 bert_model.to(device)
 
-# Load or initialize LSA vectorizer & model
+# Load LSA vectorizer/model (for fallback in prediction logic)
 lsa_vectorizer = joblib.load(os.path.join("topic modelling", "lsa_vectorizer.pkl"))
 lsa_model = joblib.load(os.path.join("topic modelling", "lsa_model.pkl"))
 
-# Preprocessing function for text cleaning
+# Text preprocessing
 def preprocess_text(text):
     text = text.lower()
     text = re.sub(r"[^a-zA-Z0-9\s]", "", text)
@@ -44,65 +45,111 @@ def preprocess_text(text):
     tokens = [lemmatizer.lemmatize(word) for word in tokens]
     return " ".join(tokens)
 
-# Function to apply BERT for sentiment analysis
+# Sentiment prediction
 def predict_sentiment(text):
     inputs = bert_tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=128)
     inputs = {k: v.to(device) for k, v in inputs.items()}
     with torch.no_grad():
         outputs = bert_model(**inputs)
         prediction = torch.argmax(outputs.logits, dim=-1).item()
-    return "Positive" if prediction == 1 else "Negative"
+    return "positive" if prediction == 1 else "negative"
 
-# Function to apply LSA for topic modeling and assign topic
-def predict_topic(text):
-    cleaned_text = preprocess_text(text)
-    tfidf_transformed = lsa_vectorizer.transform([cleaned_text])
-    
-    topic_vector = lsa_model.transform(tfidf_transformed).tolist()[0]
-    
-    most_relevant_topic = np.argmax(topic_vector)
-    
-    return int(most_relevant_topic + 1)
+def predict_topic(text, sentiment):
+    cleaned = preprocess_text(text)
+    tfidf_vec = lsa_vectorizer.transform([cleaned])
+    lsa_vec = lsa_model.transform(tfidf_vec)  # 1 x n_topics
 
-# Dash app for visualization (integrated with Flask server)
+    csv_path = os.path.join(PROCESSED_DATA_DIR, f"topic_{sentiment}.csv")
+    if not os.path.exists(csv_path):
+        return "Unknown"
+
+    topic_df = pd.read_csv(csv_path)
+
+    topic_groups = topic_df.groupby("topic")
+    topic_vectors = []
+    topic_ids = []
+
+    for topic_id, group in topic_groups:
+        terms = group["term"].tolist()
+        topic_text = " ".join(terms)
+        topic_cleaned = preprocess_text(topic_text)
+        topic_tfidf = lsa_vectorizer.transform([topic_cleaned])
+        topic_lsa_vec = lsa_model.transform(topic_tfidf)
+        topic_vectors.append(topic_lsa_vec)
+        topic_ids.append(topic_id)
+
+    if not topic_vectors:
+        return "Unknown"
+
+    topic_vectors = np.vstack(topic_vectors)
+    similarities = cosine_similarity(lsa_vec, topic_vectors)[0]
+    best_match_index = np.argmax(similarities)
+    predicted_topic = topic_ids[best_match_index]
+
+    return predicted_topic
+
+# Load sentiment and topic data
+def load_sentiment_data():
+    path = os.path.join(PROCESSED_DATA_DIR, "sentiment.csv")
+    return pd.read_csv(path) if os.path.exists(path) else pd.DataFrame()
+
+def load_topic_data():
+    pos_path = os.path.join(PROCESSED_DATA_DIR, "topic_positive.csv")
+    neg_path = os.path.join(PROCESSED_DATA_DIR, "topic_negative.csv")
+    pos_df = pd.read_csv(pos_path) if os.path.exists(pos_path) else pd.DataFrame()
+    neg_df = pd.read_csv(neg_path) if os.path.exists(neg_path) else pd.DataFrame()
+    return pos_df, neg_df
+
+# Dash app setup
 dash_app = Dash(__name__, server=server, url_base_pathname="/dashboard/")
 
-# Load data for visualization from processed_data1 directory
-def load_data():
-    sentiment_path = os.path.join(PROCESSED_DATA_DIR, "sentiment.csv")
-    topic_path = os.path.join(PROCESSED_DATA_DIR, "topic.csv")
-
-    sentiment_df = pd.read_csv(sentiment_path) if os.path.exists(sentiment_path) else pd.DataFrame()
-    topic_df = pd.read_csv(topic_path) if os.path.exists(topic_path) else pd.DataFrame()
-
-    return sentiment_df, topic_df
-
-dash_app.layout = html.Div([ 
+dash_app.layout = html.Div([
     html.H1("Game Reviews NLP Dashboard (Original Dataset)", style={"textAlign": "center"}),
 
-    html.Div([
-        dcc.Tabs([
-            dcc.Tab(label="Sentiment Analysis", value="sentiment"),
-            dcc.Tab(label="Topic Modeling", value="topic")
-        ], id="tabs", value="sentiment")
+    dcc.Tabs(id="tabs", value="sentiment", children=[
+        dcc.Tab(label="Sentiment Analysis", value="sentiment"),
+        dcc.Tab(label="Topic Modeling", value="topic")
     ]),
 
     html.Div(id="sentiment-dashboard", children=[
         html.H2("Sentiment Summary"),
-        dcc.Graph(id="sentiment-bar-chart-bert"),
-        dcc.Graph(id="sentiment-bar-chart-vader"),
+
+        html.Div([
+            dcc.Graph(id="sentiment-bar-chart-bert", style={"width": "50%"}),
+            dcc.Graph(id="sentiment-bar-chart-vader", style={"width": "50%"})
+        ], style={"display": "flex"}),
+
         dcc.Interval(id="interval-component", interval=60 * 1000, n_intervals=0),
     ]),
 
     html.Div(id="topic-dashboard", children=[
         html.H2("Topic Analysis"),
-        dcc.Dropdown(id="topic-dropdown", options=[], value=None),
+
+        html.Div([
+            html.Div([
+                html.Label("Select Sentiment:"),
+                dcc.Dropdown(
+                    id="sentiment-filter",
+                    options=[
+                        {"label": "Positive", "value": "positive"},
+                        {"label": "Negative", "value": "negative"}
+                    ],
+                    value="positive"
+                ),
+            ], style={"width": "50%", "paddingRight": "10px"}),
+
+            html.Div([
+                html.Label("Select Topic:"),
+                dcc.Dropdown(id="topic-dropdown"),
+            ], style={"width": "50%", "paddingLeft": "10px"})
+        ], style={"display": "flex", "gap": "10px"}),
+
         dcc.Graph(id="topic-bar-chart"),
         dcc.Interval(id="interval-topic-component", interval=60 * 1000, n_intervals=0),
     ])
 ])
 
-# Tab switch callback
+# Tab switch logic
 @dash_app.callback(
     Output("sentiment-dashboard", "style"),
     Output("topic-dashboard", "style"),
@@ -111,106 +158,87 @@ dash_app.layout = html.Div([
 def switch_tab(tab_value):
     if tab_value == "sentiment":
         return {"display": "block"}, {"display": "none"}
-    elif tab_value == "topic":
-        return {"display": "none"}, {"display": "block"}
+    return {"display": "none"}, {"display": "block"}
 
-# Sentiment dashboard update
+# Sentiment dashboard
 @dash_app.callback(
     Output("sentiment-bar-chart-bert", "figure"),
     Output("sentiment-bar-chart-vader", "figure"),
     Input("interval-component", "n_intervals")
 )
-def update_sentiment_dashboard(n_intervals):
-    sentiment_df, _ = load_data()
-
-    if sentiment_df.empty:
+def update_sentiment_dashboard(_):
+    df = load_sentiment_data()
+    if df.empty:
         return {}, {}
 
-    # BERT sentiment manipulation
-    sentiment_bert_summary = sentiment_df.groupby("bert_sentiment").size().reset_index(name="count")
-    sentiment_bert_summary["bert_sentiment"] = sentiment_bert_summary["bert_sentiment"].map({0: "Negative", 1: "Positive"})
+    bert_summary = df.groupby("bert_sentiment").size().reset_index(name="count")
+    bert_summary["bert_sentiment"] = bert_summary["bert_sentiment"].map({0: "Negative", 1: "Positive"})
+    bert_fig = px.bar(bert_summary, x="bert_sentiment", y="count", color="bert_sentiment", title="BERT Sentiment")
 
-    sentiment_bert_bar = px.bar(
-        sentiment_bert_summary,
-        x="bert_sentiment",
-        y="count",
-        color="bert_sentiment",
-        title="BERT Sentiment Analysis"
-    )
+    df['vader_sentiment'] = df['vader_sentiment'].apply(lambda x: "Positive" if x >= 0 else "Negative")
+    vader_summary = df.groupby("vader_sentiment").size().reset_index(name="count")
+    vader_fig = px.bar(vader_summary, x="vader_sentiment", y="count", color="vader_sentiment", title="VADER Sentiment")
 
-    # VADER sentiment manipulation
-    sentiment_df['vader_sentiment'] = sentiment_df['vader_sentiment'].apply(lambda x: "Positive" if x >= 0 else "Negative")
-    sentiment_vader_summary = sentiment_df.groupby("vader_sentiment").size().reset_index(name="count")
+    return bert_fig, vader_fig
 
-    sentiment_vader_bar = px.bar(
-        sentiment_vader_summary,
-        x="vader_sentiment",
-        y="count",
-        color="vader_sentiment",
-        title="VADER Sentiment Analysis"
-    )
-
-    return sentiment_bert_bar, sentiment_vader_bar
-
-# Topic dashboard update and dropdown options
+# Topic dropdown + chart
 @dash_app.callback(
-    [Output("topic-dropdown", "options"),
-     Output("topic-bar-chart", "figure")],
-    Input("interval-topic-component", "n_intervals"),
-    Input("topic-dropdown", "value")
+    Output("topic-dropdown", "options"),
+    Output("topic-dropdown", "value"),
+    Input("sentiment-filter", "value"),
+    Input("interval-topic-component", "n_intervals")
 )
-def update_topic_dashboard(n_intervals, selected_topic):
-    _, topic_df = load_data()
+def update_topic_dropdown(sentiment, _):
+    pos_df, neg_df = load_topic_data()
+    df = pos_df if sentiment == "positive" else neg_df
+    if df.empty:
+        return [], None
+    topics = sorted(df['topic'].unique())
+    options = [{"label": f"Topic {t}", "value": t} for t in topics]
+    return options, topics[0]
 
-    if topic_df.empty or 'term' not in topic_df or 'weightage' not in topic_df:
-        return [], {}
-
-    topic_df = topic_df.dropna(subset=['weightage'])
-    topic_df = topic_df[topic_df['weightage'].apply(lambda x: isinstance(x, (int, float)))]  # Ensure valid numeric weights
-
-    if topic_df.empty:
-        return [], {}
-
-    topics = topic_df['topic'].unique()
-    topic_options = [{'label': f"Topic {i+1}", 'value': i+1} for i in range(len(topics))]
-
-    if selected_topic is None:
-        selected_topic = topic_options[0]['value']
-
-    topic_filtered = topic_df[topic_df['topic'] == selected_topic]
-
-    topic_filtered['weightage'] = topic_filtered['weightage'] * -1
-
-    topic_filtered = topic_filtered.sort_values(by='weightage', ascending=False)
-
-    topic_bar = px.bar(
-        topic_filtered,
-        x="term",
-        y="weightage",
-        color="term",
-        title=f"Topic {selected_topic} Analysis",
-        labels={"weightage": "Weightage (Log Transformed)"},
-        hover_data={"term": True, "weightage": True}
+@dash_app.callback(
+    Output("topic-bar-chart", "figure"),
+    Input("sentiment-filter", "value"),
+    Input("topic-dropdown", "value"),
+    Input("interval-topic-component", "n_intervals")
+)
+def update_topic_chart(sentiment, topic, _):
+    pos_df, neg_df = load_topic_data()
+    df = pos_df if sentiment == "positive" else neg_df
+    if df.empty or topic is None:
+        return {}
+    df = df[df['topic'] == topic]
+    df['weightage'] = df['weightage'] * -1
+    df = df.sort_values(by="weightage", ascending=False)
+    fig = px.bar(
+        df, x="term", y="weightage", color="term",
+        title=f"Topic {topic} from {sentiment.capitalize()} Reviews",
+        labels={"weightage": "Weight (Log Transformed)"}
     )
+    return fig
 
-    return topic_options, topic_bar
-
-# Predict sentiment and topic using uploaded text
+# Prediction endpoint
 @server.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
-        text = data.get("review_text")
+        text = data.get("review_text", "")
         if not text:
-            return jsonify({"error": "No text provided"}), 400
+            return jsonify({"error": "No review_text provided"}), 400
 
         sentiment = predict_sentiment(text)
-        topic = predict_topic(text)
+        topic = predict_topic(text, sentiment)
 
-        return jsonify({"sentiment": sentiment, "topic": topic})
+        message = f"This review is predicted to have **{sentiment.upper()}** sentiment and belongs to **Topic {topic}**."
+        return jsonify({
+            "sentiment": sentiment,
+            "topic": topic,
+            "message": message
+        })
 
     except Exception as e:
-        return jsonify({"error": f"Error processing the request: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     server.run(debug=True, port=8051)

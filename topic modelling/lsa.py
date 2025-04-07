@@ -1,42 +1,30 @@
 import pandas as pd
-import re
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 import joblib
+import os
 
-# Initialize NLTK and utilities
-stop_words = set(stopwords.words('english'))
-lemmatizer = WordNetLemmatizer()
+# Load the sentiment data (already tokenized)
+df = pd.read_csv('sentiment.csv')
 
-# Function to preprocess text
-def preprocess_text(text):
-    if isinstance(text, str):  # Check if text is a string
-        text = text.lower()
-        text = re.sub(r"[^a-zA-Z0-9\s]", "", text)
-        tokens = word_tokenize(text)
-        tokens = [word for word in tokens if word not in stop_words]
-        tokens = [lemmatizer.lemmatize(word) for word in tokens]
-        return " ".join(tokens)
-    else:
-        return ''  # Return an empty string if the text is not a string
+# Split into positive and negative sentiment
+df_positive = df[df['bert_sentiment'] == 1]
+df_negative = df[df['bert_sentiment'] == 0]
 
-# Load and preprocess data
-df = pd.read_csv('steam_reviews.csv')
-df['cleaned_review_text'] = df['review_text'].apply(preprocess_text)
+# Define a function to run and save LSA model for each sentiment group
+def run_lsa_and_save(df_subset, label):
+    tfidf_vectorizer = TfidfVectorizer()
+    tfidf_matrix = tfidf_vectorizer.fit_transform(df_subset['cleaned_review_text'])
 
-# TF-IDF Vectorization
-tfidf_vectorizer = TfidfVectorizer()
-tfidf_matrix = tfidf_vectorizer.fit_transform(df['cleaned_review_text'])
+    lsa_model = TruncatedSVD(n_components=10, random_state=42)
+    lsa_model.fit(tfidf_matrix)
 
-# LSA Model (TruncatedSVD)
-lsa_model = TruncatedSVD(n_components=10, random_state=42)
-lsa_matrix = lsa_model.fit_transform(tfidf_matrix)
+    # Save model and vectorizer
+    joblib.dump(lsa_model, f'lsa_model_{label}.pkl')
+    joblib.dump(tfidf_vectorizer, f'lsa_vectorizer_{label}.pkl')
 
-# Save the model and vectorizer
-joblib.dump(lsa_model, 'lsa_model.pkl')
-joblib.dump(tfidf_vectorizer, 'lsa_vectorizer.pkl')
+# Run LSA for both sentiments
+run_lsa_and_save(df_positive, 'positive')
+run_lsa_and_save(df_negative, 'negative')
 
-print("LSA Model and Vectorizer saved!")
+print("LSA models for positive and negative sentiment saved.")
